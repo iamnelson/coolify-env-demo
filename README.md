@@ -80,17 +80,50 @@ Coolify runs it.
 ## 🛡️ Security checks
 
 Every commit pushed to GitHub and every pull request update runs two independent
-security checks before deployment:
+security checks (`.github/workflows/sast.yml` and `.github/workflows/dast.yml`)
+before deployment. Both are required, run in parallel, and are independent of
+the `Build and deploy` pipeline — a security finding never ships an image.
 
-- **SAST** runs CodeQL's `security-extended` suite against the JavaScript and
-  TypeScript source code. Findings are published in GitHub code scanning.
-- **DAST** builds the commit into a temporary Docker image and runs an OWASP
-  ZAP baseline scan against it on a private Docker network. The scan never
-  touches the production URL, and its HTML and JSON reports are attached to the
-  workflow run.
+### SAST — static analysis
 
-The application also sends CSP, framing, MIME-sniffing, referrer, and browser
-permissions headers, which the DAST check validates continuously.
+- Runs CodeQL's `security-extended` query suite against the JavaScript and
+  TypeScript source with the [`github/codeql-action`](https://github.com/github/codeql-action).
+- Triggers on every `push`, every `pull_request`, and manually via
+  `workflow_dispatch`.
+- Findings are published under the repository's **Security → Code scanning
+  alerts** tab, not just in the workflow log.
+- Needs `security-events: write` permission to upload results; no other
+  permissions are granted.
+
+### DAST — dynamic analysis
+
+- Builds the current commit into a throwaway Docker image, starts it on an
+  isolated `dast-network` Docker network with placeholder environment values
+  (never real secrets), waits for `/api/health` to respond, then points an
+  [OWASP ZAP](https://www.zaproxy.org/) baseline scan
+  (`ghcr.io/zaproxy/zaproxy:stable`) at it.
+- The scan **only ever targets the temporary container**, never
+  `coolify-env-demo.nelsoncarv.work`. Nothing in this workflow can reach
+  production.
+- Pass/fail behaviour per finding is controlled by `.zap/rules.tsv`: each rule
+  ID is `FAIL` (blocks the workflow — currently missing/invalid framing,
+  content-type, cross-origin-isolation, permissions-policy, and CSP-wildcard
+  headers), `IGNORE` (recorded, non-blocking — mostly caching and legacy
+  header advisories that don't apply to this app), or `INFO`. Any new
+  exception added to that file must include a one-line reason as a comment
+  above it.
+- The HTML and JSON ZAP reports are uploaded as the `zap-baseline-report`
+  workflow artifact on every run, including failed ones, so a failure can be
+  triaged without re-running the scan.
+- The temporary container and network are always removed in a cleanup step,
+  even when the scan fails.
+
+The application also sends CSP, framing, MIME-sniffing, referrer,
+cross-origin-isolation, and browser permissions headers
+(see `next.config.ts`), which the DAST check validates on every run. If DAST
+starts failing after a change, check the response headers first — a real
+regression should be fixed there rather than added to `.zap/rules.tsv` as an
+`IGNORE`.
 
 ## 🧪 What is actually proven
 
