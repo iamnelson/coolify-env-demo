@@ -1,3 +1,5 @@
+import { logServerButtonClick } from "./actions";
+
 export const dynamic = "force-dynamic";
 
 function maskSecret(value: string | undefined): string {
@@ -30,6 +32,9 @@ export default function Home() {
           <dd>{buildTime}</dd>
         </div>
       </dl>
+      <form action={logServerButtonClick} className="server-log">
+        <button type="submit">Escrever log no servidor</button>
+      </form>
     </main>
   );
 }

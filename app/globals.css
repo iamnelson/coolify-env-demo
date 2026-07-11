@@ -41,3 +41,17 @@ dd {
   overflow-wrap: anywhere;
   font-family: monospace;
 }
+
+.server-log {
+  margin-top: 2rem;
+}
+
+.server-log button {
+  padding: 0.7rem 1rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: #2563eb;
+  color: #ffffff;
+  cursor: pointer;
+  font: inherit;
+}
