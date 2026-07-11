@@ -63,3 +63,26 @@ Copy `.env.example` → `.env.local` first. Healthcheck lives at `/api/health`.
 2. Edit the `APP_MESSAGE` variable
 3. Re-run the [latest workflow run](https://github.com/iamnelson/coolify-env-demo/actions/workflows/deploy.yml) (or push a commit)
 4. Refresh https://coolify-env-demo.nelsoncarv.work — new message, new `BUILD_TIME`, same masked secret
+
+## References
+
+- [Next.js App Router docs](https://nextjs.org/docs/app)
+- [Next.js Docker deployment example](https://github.com/vercel/next.js/tree/canary/examples/with-docker) — the standalone-output pattern this Dockerfile follows
+- [Next.js environment variables](https://nextjs.org/docs/app/building-your-application/configuring/environment-variables) — server vs. client exposure rules
+- [Docker multi-stage builds](https://docs.docker.com/build/building/multi-stage/)
+- [GitHub Actions: Variables](https://docs.github.com/en/actions/learn-github-actions/variables)
+- [GitHub Actions: Encrypted secrets](https://docs.github.com/en/actions/security-guides/encrypted-secrets)
+- [GitHub Actions: Self-hosted runners](https://docs.github.com/en/actions/hosting-your-own-runners/managing-self-hosted-runners/about-self-hosted-runners)
+- [GitHub Container Registry (GHCR)](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry)
+- [`docker/build-push-action`](https://github.com/docker/build-push-action)
+- [`docker/login-action`](https://github.com/docker/login-action)
+- [Coolify docs](https://coolify.io/docs)
+- [Cloudflare proxy / DNS](https://developers.cloudflare.com/dns/) — sits in front of Coolify's Traefik instance for this domain
+- [OCI image spec](https://github.com/opencontainers/image-spec) — what actually gets pushed to and pulled from GHCR
+
+## Built with
+
+- **[Claude Code](https://claude.com/claude-code)** — end-to-end orchestration: repo, workflow, Coolify API wiring, and the two production incidents this demo survived (a GHCR org policy blocking public packages, and a missing `curl` breaking Coolify's healthcheck — see commit history)
+- **Codex** — scaffolded the initial Next.js app, Dockerfile, and project structure
+- **[Coolify](https://coolify.io)** — the self-hosted deployment target this whole exercise is testing
+
