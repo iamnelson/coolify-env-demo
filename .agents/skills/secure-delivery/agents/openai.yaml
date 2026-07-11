@@ -1,0 +1,4 @@
+interface:
+  display_name: "Secure Delivery"
+  short_description: "Ship guarded changes through GitHub safely"
+  default_prompt: "Use $secure-delivery to prepare a secure change for review."
