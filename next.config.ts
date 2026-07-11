@@ -15,6 +15,7 @@ const nextConfig: NextConfig = {
           },
           { key: "Permissions-Policy", value: "camera=(), geolocation=(), microphone=()" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Cross-Origin-Embedder-Policy", value: "require-corp" },
           { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "X-Frame-Options", value: "DENY" },
