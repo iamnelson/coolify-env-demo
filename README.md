@@ -107,11 +107,11 @@ the `Build and deploy` pipeline — a security finding never ships an image.
   production.
 - Pass/fail behaviour per finding is controlled by `.zap/rules.tsv`: each rule
   ID is `FAIL` (blocks the workflow — currently missing/invalid framing,
-  content-type, cross-origin-isolation, permissions-policy, and CSP-wildcard
-  headers), `IGNORE` (recorded, non-blocking — mostly caching and legacy
-  header advisories that don't apply to this app), or `INFO`. Any new
-  exception added to that file must include a one-line reason as a comment
-  above it.
+  content-type, cross-origin-isolation, permissions-policy, missing CSP, and
+  CSP-wildcard findings), `IGNORE` (recorded, non-blocking — mostly caching
+  and legacy header advisories that don't apply to this app), or `INFO`. Any
+  new exception added to that file must include a one-line reason as a
+  comment above it.
 - The HTML and JSON ZAP reports are uploaded as the `zap-baseline-report`
   workflow artifact on every run, including failed ones, so a failure can be
   triaged without re-running the scan.
@@ -124,6 +124,53 @@ cross-origin-isolation, and browser permissions headers
 starts failing after a change, check the response headers first — a real
 regression should be fixed there rather than added to `.zap/rules.tsv` as an
 `IGNORE`.
+
+### Running the ZAP baseline scan locally
+
+Reproduces exactly what `.github/workflows/dast.yml` runs in CI, so a finding
+can be triaged or a fix confirmed before pushing. Requires a running Docker
+engine.
+
+```bash
+# 1. Build the same image the workflow scans
+docker build --tag dast-target:local .
+
+# 2. Start it on an isolated network with placeholder (non-real) values
+docker network create dast-network
+docker run --detach --rm --name dast-target --network dast-network --network-alias app \
+  --env APP_MESSAGE="local DAST" \
+  --env APP_SECRET_HINT="local-placeholder" \
+  --env BUILD_TIME="local" \
+  dast-target:local
+
+# 3. Wait until the health endpoint responds
+docker exec dast-target curl --fail --silent http://localhost:3000/api/health
+
+# 4. Run the same ZAP baseline scan and ruleset as CI
+mkdir --parents zap-reports
+docker run --rm --network dast-network \
+  --volume "$PWD:/zap/src:ro" \
+  --volume "$PWD/zap-reports:/zap/wrk:rw" \
+  ghcr.io/zaproxy/zaproxy:stable \
+  zap-baseline.py \
+    --autooff \
+    -s \
+    -c /zap/src/.zap/rules.tsv \
+    -t http://app:3000 \
+    -m 1 \
+    -T 2 \
+    -r /zap/wrk/zap-report.html \
+    -J /zap/wrk/zap-report.json
+
+# 5. Clean up
+docker rm --force dast-target
+docker network rm dast-network
+```
+
+Open `zap-reports/zap-report.html` for the human-readable report. A non-zero
+exit code from `zap-baseline.py` means a rule marked `FAIL` in
+`.zap/rules.tsv` was triggered — fix the underlying response (usually a
+header in `next.config.ts`) rather than loosening the rule.
 
 ## 🧪 What is actually proven
 
