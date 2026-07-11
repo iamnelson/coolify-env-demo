@@ -4,7 +4,7 @@
 10015	IGNORE	(Incomplete or No Cache-control and Pragma HTTP Header Set)
 10016	IGNORE	(Web Browser XSS Protection Not Enabled)
 10202	INFO	(Next.js Server Actions validate Origin against Host)
-90004	FAIL	(Cross-Origin-Embedder-Policy Header Missing or Invalid)
+90004	FAIL	(Cross-Origin isolation policy header missing or invalid)
 10020	FAIL	(X-Frame-Options Header Not Set)
 10021	FAIL	(X-Content-Type-Options Header Missing)
 10035	IGNORE	(Strict-Transport-Security Header Not Set)
