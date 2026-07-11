@@ -1,0 +1,75 @@
+name: Build and deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ${{ vars.GHCR_IMAGE }}
+
+jobs:
+  build-and-deploy:
+    runs-on: [self-hosted, docker-build]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set build metadata
+        id: meta
+        run: echo "build_time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+
+      - name: Sync env vars to Coolify
+        env:
+          COOLIFY_URL: ${{ vars.COOLIFY_URL }}
+          COOLIFY_APP_UUID: ${{ vars.COOLIFY_APP_UUID }}
+          COOLIFY_API_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
+          APP_MESSAGE: ${{ vars.APP_MESSAGE }}
+          APP_SECRET_HINT: ${{ secrets.APP_SECRET_HINT }}
+          BUILD_TIME: ${{ steps.meta.outputs.build_time }}
+        run: |
+          curl -sf -X PATCH "$COOLIFY_URL/api/v1/applications/$COOLIFY_APP_UUID/envs/bulk" \
+            -H "Authorization: Bearer $COOLIFY_API_TOKEN" \
+            -H "Content-Type: application/json" \
+            -H "Accept: application/json" \
+            -d "$(node -e '
+              const data = [
+                { key: "APP_MESSAGE", value: process.env.APP_MESSAGE, is_preview: false },
+                { key: "APP_SECRET_HINT", value: process.env.APP_SECRET_HINT, is_preview: false },
+                { key: "BUILD_TIME", value: process.env.BUILD_TIME, is_preview: false },
+              ];
+              process.stdout.write(JSON.stringify({ data }));
+            ')"
+
+      - name: Trigger Coolify redeploy
+        env:
+          COOLIFY_URL: ${{ vars.COOLIFY_URL }}
+          COOLIFY_APP_UUID: ${{ vars.COOLIFY_APP_UUID }}
+          COOLIFY_API_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
+        run: |
+          curl -sf -X POST "$COOLIFY_URL/api/v1/deploy?uuid=$COOLIFY_APP_UUID&force=false" \
+            -H "Authorization: Bearer $COOLIFY_API_TOKEN" \
+            -H "Accept: application/json"
