@@ -1,88 +1,168 @@
-# coolify-env-demo
+# 🚢 coolify-env-demo
 
-**A live, working proof that config lives in GitHub — not in the deployment target.**
+> **Change it in GitHub. Watch it land in production. No SSH. No dashboard drift.**
+> A live, working proof that GitHub can own runtime configuration all the way
+> from Actions variables and secrets to a container running on Coolify.
 
 [![Build and deploy](https://github.com/iamnelson/coolify-env-demo/actions/workflows/deploy.yml/badge.svg)](https://github.com/iamnelson/coolify-env-demo/actions/workflows/deploy.yml)
-![Next.js](https://img.shields.io/badge/Next.js-App%20Router-black?logo=next.js)
-![Docker](https://img.shields.io/badge/Docker-multi--stage-2496ED?logo=docker&logoColor=white)
-![Coolify](https://img.shields.io/badge/Coolify-self--hosted%20PaaS-6c4cf5)
-![Self-hosted runner](https://img.shields.io/badge/CI-self--hosted%20runner-2b2b2b?logo=githubactions&logoColor=white)
+[![Live](https://img.shields.io/badge/live-coolify--env--demo.nelsoncarv.work-22c55e?style=flat-square)](https://coolify-env-demo.nelsoncarv.work)
+![Next.js](https://img.shields.io/badge/Next.js-App%20Router-000000?style=flat-square&logo=next.js&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-multi--stage-2496ED?style=flat-square&logo=docker&logoColor=white)
+![Coolify](https://img.shields.io/badge/deployment-Coolify-6B16ED?style=flat-square)
+![GitHub Actions](https://img.shields.io/badge/CI%2FCD-self--hosted%20runner-2088FF?style=flat-square&logo=githubactions&logoColor=white)
+![Cloudflare](https://img.shields.io/badge/edge-Cloudflare-F38020?style=flat-square&logo=cloudflare&logoColor=white)
 
-**Live app:** https://coolify-env-demo.nelsoncarv.work
+This is a deliberately small application with one serious job: prove, end to
+end, that a value changed in GitHub reaches the live server environment and is
+read at request time — without a human editing production by hand.
 
----
+**See the proof running now:** [coolify-env-demo.nelsoncarv.work](https://coolify-env-demo.nelsoncarv.work)
 
-## The problem this solves
+## 🎯 Why this exists
 
-Every team eventually asks: *"if I change a value in GitHub, does it actually reach production — and can I prove it without SSH-ing into a box?"*
+- **Configuration drift is easy to create and hard to see.** A value in GitHub
+  and a value in a deployment dashboard can quietly become two different
+  truths. Here, GitHub is the source of truth and Coolify is only the runtime.
+- **“The deploy succeeded” is not the same as “the value reached the app.”**
+  This page reads the current environment on every request, so the final result
+  is visible and testable from the browser.
+- **Secrets need proof without disclosure.** The application shows only a
+  masked preview of the deployed secret, confirming that it arrived while never
+  rendering the raw value.
+- **Self-hosted delivery should still feel like a platform.** One push builds
+  an immutable image, publishes it to GHCR, synchronizes runtime configuration,
+  and asks Coolify to redeploy it.
 
-This repo is a minimal, disposable answer. One push updates a GitHub Actions **Variable** and **Secret**, and within a couple of minutes the *exact same values* are readable — server-side only — on a container running behind Coolify, Traefik, and Cloudflare. No dashboards to trust blindly, no "should be updated" — the page renders the live value on every request.
+## 💡 The idea
 
-## Architecture
+GitHub owns the desired state. A self-hosted Actions runner turns the commit into
+an image, sends the environment values to Coolify through its API, and triggers
+the deployment. The Next.js server reads those values only when a request
+arrives.
+
+- 📝 **Change** `APP_MESSAGE` in GitHub Actions variables.
+- 🏗️ **Build** a multi-stage, non-root Next.js container.
+- 📦 **Publish** immutable `latest` and commit-SHA tags to GHCR.
+- 🔄 **Synchronize** variables and secrets through the Coolify API.
+- 🚀 **Redeploy** the application without touching the server.
+- 👀 **Verify** the new message and deployment timestamp in the live app.
 
 ```mermaid
 flowchart LR
-    A[GitHub Actions\nVariables & Secrets] -->|workflow run| B[Self-hosted runner\nlabel: docker-build]
-    B -->|docker build & push| C[(GHCR\nghcr.io/iamnelson/coolify-env-demo)]
-    B -->|PATCH /envs/bulk\nPOST /deploy| D[Coolify API]
-    D --> E[Coolify\npulls image + injects env]
-    E --> F[Next.js container\nreads process.env at request time]
-    F -->|HTTPS via Cloudflare| G((coolify-env-demo.nelsoncarv.work))
+    subgraph github [GitHub]
+        G[(main)]
+        V[Actions variables<br/>and secrets]
+        A[Self-hosted<br/>Actions runner]
+        R[(GHCR)]
+        G -->|push| A
+        V -->|runtime config| A
+        A -->|build and push| R
+    end
+
+    subgraph platform [Self-hosted platform]
+        C[Coolify API]
+        N[Next.js container]
+        T[Traefik]
+        C -->|inject env and deploy| N
+        N --> T
+    end
+
+    A -->|sync env and trigger| C
+    R -->|pull image| C
+    T -->|HTTPS via Cloudflare| L((Live app))
 ```
 
-**No shared secret store, no manual dashboard edits.** GitHub Actions is the single source of truth; Coolify is just the runtime.
+There is no second configuration source to reconcile. GitHub declares it;
+Coolify runs it.
 
-## What's actually being proven
+## 🧪 What is actually proven
 
-| Claim | How it's verified |
+| Claim | Live evidence |
 |---|---|
-| Env vars are read server-side, not baked into the client bundle | `app/page.tsx` is a server component with `export const dynamic = "force-dynamic"` — values are resolved per-request, never inlined at build time |
-| Secrets stay secret | The page renders a masked preview (`Toda...ay`) of `APP_SECRET_HINT`, never the raw value — same principle you'd want for API keys in a real app |
-| GitHub is the deploy trigger, not a human clicking around | `git push` → self-hosted Actions runner (`docker-build` label) → build, push to GHCR, sync vars to Coolify, trigger redeploy — zero manual steps |
-| The loop is closed | Change `APP_MESSAGE` in **Settings → Secrets and variables → Actions**, re-run the workflow, refresh the page — new value, new `BUILD_TIME` |
+| Environment values are runtime configuration | `app/page.tsx` is a dynamic server component and reads `process.env` on every request |
+| The secret reaches the container without being exposed | The UI renders only a masked preview of `APP_SECRET_HINT` |
+| Every deployment is identifiable | `BUILD_TIME` is generated during the workflow and displayed by the running application |
+| GitHub drives production | The workflow builds, pushes, calls Coolify's environment API, and triggers the redeploy |
+| The container is ready for real hosting | It runs as a non-root user and exposes a dedicated `/api/health` endpoint |
+| Server-side actions reach the runtime | The **Write server log** button emits a timestamped entry in the application logs |
 
-## Stack
+## 🚀 Prove it end to end
 
-- **Next.js (App Router, TypeScript)** — server component, standalone output build
-- **Docker** — multi-stage build, non-root runtime user, `~150MB` final image
-- **GitHub Actions** — self-hosted runner (`docker-build` label), builds and pushes to GHCR
-- **Coolify** — deployment target, Traefik reverse proxy, Cloudflare in front
+1. Open the repository's **Settings → Secrets and variables → Actions**.
+2. Change the `APP_MESSAGE` variable.
+3. Re-run [Build and deploy](https://github.com/iamnelson/coolify-env-demo/actions/workflows/deploy.yml), or push a commit to `main`.
+4. Open the [live application](https://coolify-env-demo.nelsoncarv.work).
+5. Confirm the new message, the new deployment timestamp, and the masked secret.
 
-## Try it yourself
+That closes the loop from declared configuration to observable production
+state.
 
-```sh
+## 💻 Run it locally
+
+```bash
+git clone https://github.com/iamnelson/coolify-env-demo.git
+cd coolify-env-demo
+cp .env.example .env.local
 npm install
 npm run dev
 ```
 
-Copy `.env.example` → `.env.local` first. Healthcheck lives at `/api/health`.
+Open [localhost:3000](http://localhost:3000). The health endpoint is available
+at [localhost:3000/api/health](http://localhost:3000/api/health).
 
-## Prove it end-to-end
+## 🔐 Deployment contract
 
-1. Go to **Settings → Secrets and variables → Actions** on this repo
-2. Edit the `APP_MESSAGE` variable
-3. Re-run the [latest workflow run](https://github.com/iamnelson/coolify-env-demo/actions/workflows/deploy.yml) (or push a commit)
-4. Refresh https://coolify-env-demo.nelsoncarv.work — new message, new `BUILD_TIME`, same masked secret
+The workflow expects these repository values:
 
-## References
+| Name | Type | Purpose |
+|---|---|---|
+| `GHCR_IMAGE` | Variable | Full GHCR image name |
+| `COOLIFY_URL` | Variable | Base URL of the Coolify instance |
+| `COOLIFY_APP_UUID` | Variable | Target application identifier |
+| `APP_MESSAGE` | Variable | Public demo message shown by the app |
+| `COOLIFY_API_TOKEN` | Secret | Authenticates calls to the Coolify API |
+| `APP_SECRET_HINT` | Secret | Demonstrates masked runtime secret delivery |
 
-- [Next.js App Router docs](https://nextjs.org/docs/app)
-- [Next.js Docker deployment example](https://github.com/vercel/next.js/tree/canary/examples/with-docker) — the standalone-output pattern this Dockerfile follows
-- [Next.js environment variables](https://nextjs.org/docs/app/building-your-application/configuring/environment-variables) — server vs. client exposure rules
+`BUILD_TIME` is created automatically during the workflow. The deployment
+publishes both `latest` and the full commit SHA, keeping the running artifact
+traceable to Git.
+
+## 🗂️ What is here
+
+- 🌐 `app/` — the dynamic Next.js page, server action, and health endpoint.
+- 🐳 `Dockerfile` — a multi-stage standalone build with a non-root runtime.
+- ⚙️ `.github/workflows/deploy.yml` — build, GHCR publish, environment sync,
+  and Coolify redeploy in one pipeline.
+- 🧰 `.env.example` — the complete local configuration contract, with no real
+  credentials.
+
+## 🧯 What broke along the way
+
+This is a small demo, but it records real platform failures rather than hiding
+them:
+
+- A GHCR organization policy blocked the first public package path.
+- A missing `curl` binary caused Coolify's container healthcheck to fail.
+- The fixes live in the commit history, alongside the working deployment.
+
+That history is part of the proof: the project was operated, debugged, and
+recovered — not only diagrammed.
+
+## ✨ Built with
+
+- **[Claude Code](https://claude.com/claude-code)** — deployment orchestration,
+  Coolify API wiring, and production debugging.
+- **Codex** — initial Next.js, Docker, and repository scaffolding.
+- **[Coolify](https://coolify.io)** — the self-hosted platform under test.
+
+## 📖 References
+
+- [Next.js: deploying with Docker](https://nextjs.org/docs/app/getting-started/deploying#docker)
+- [Next.js: environment variables](https://nextjs.org/docs/app/guides/environment-variables)
 - [Docker multi-stage builds](https://docs.docker.com/build/building/multi-stage/)
-- [GitHub Actions: Variables](https://docs.github.com/en/actions/learn-github-actions/variables)
-- [GitHub Actions: Encrypted secrets](https://docs.github.com/en/actions/security-guides/encrypted-secrets)
-- [GitHub Actions: Self-hosted runners](https://docs.github.com/en/actions/hosting-your-own-runners/managing-self-hosted-runners/about-self-hosted-runners)
-- [GitHub Container Registry (GHCR)](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry)
-- [`docker/build-push-action`](https://github.com/docker/build-push-action)
-- [`docker/login-action`](https://github.com/docker/login-action)
-- [Coolify docs](https://coolify.io/docs)
-- [Cloudflare proxy / DNS](https://developers.cloudflare.com/dns/) — sits in front of Coolify's Traefik instance for this domain
-- [OCI image spec](https://github.com/opencontainers/image-spec) — what actually gets pushed to and pulled from GHCR
-
-## Built with
-
-- **[Claude Code](https://claude.com/claude-code)** — end-to-end orchestration: repo, workflow, Coolify API wiring, and the two production incidents this demo survived (a GHCR org policy blocking public packages, and a missing `curl` breaking Coolify's healthcheck — see commit history)
-- **Codex** — scaffolded the initial Next.js app, Dockerfile, and project structure
-- **[Coolify](https://coolify.io)** — the self-hosted deployment target this whole exercise is testing
-
+- [GitHub Actions variables](https://docs.github.com/en/actions/learn-github-actions/variables)
+- [GitHub Actions secrets](https://docs.github.com/en/actions/security-guides/encrypted-secrets)
+- [GitHub-hosted and self-hosted runners](https://docs.github.com/en/actions/hosting-your-own-runners)
+- [GitHub Container Registry](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry)
+- [Coolify documentation](https://coolify.io/docs)
+- [Cloudflare DNS documentation](https://developers.cloudflare.com/dns/)

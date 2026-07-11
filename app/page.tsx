@@ -33,7 +33,7 @@ export default function Home() {
         </div>
       </dl>
       <form action={logServerButtonClick} className="server-log">
-        <button type="submit">Escrever log no servidor</button>
+        <button type="submit">Write server log</button>
       </form>
     </main>
   );
