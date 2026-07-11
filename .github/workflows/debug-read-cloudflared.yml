@@ -1,0 +1,26 @@
+name: Debug - read cloudflared config
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  read-config:
+    runs-on: [self-hosted, docker-build]
+    steps:
+      - name: Locate and print cloudflared config
+        run: |
+          echo "== hostname =="
+          hostname
+          echo "== searching for cloudflared config files =="
+          find / -xdev -iname "*cloudflared*" -not -path "*/proc/*" 2>/dev/null | head -50
+          echo "== common config paths =="
+          for f in /etc/cloudflared/config.yml /etc/cloudflared/config.yaml ~/.cloudflared/config.yml ~/.cloudflared/config.yaml /root/.cloudflared/config.yml; do
+            if [ -f "$f" ]; then
+              echo "--- FOUND: $f ---"
+              cat "$f"
+            fi
+          done
+          echo "== running cloudflared processes =="
+          ps aux | grep -i cloudflared | grep -v grep || echo "none found on this host"
+          echo "== docker containers matching cloudflared =="
+          docker ps -a --filter "name=cloudflare" 2>/dev/null || echo "docker not available or no access"
