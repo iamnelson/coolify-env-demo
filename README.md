@@ -5,6 +5,8 @@
 > from Actions variables and secrets to a container running on Coolify.
 
 [![Build and deploy](https://github.com/iamnelson/coolify-env-demo/actions/workflows/deploy.yml/badge.svg)](https://github.com/iamnelson/coolify-env-demo/actions/workflows/deploy.yml)
+[![SAST](https://github.com/iamnelson/coolify-env-demo/actions/workflows/sast.yml/badge.svg)](https://github.com/iamnelson/coolify-env-demo/actions/workflows/sast.yml)
+[![DAST](https://github.com/iamnelson/coolify-env-demo/actions/workflows/dast.yml/badge.svg)](https://github.com/iamnelson/coolify-env-demo/actions/workflows/dast.yml)
 [![Live](https://img.shields.io/badge/live-coolify--env--demo.nelsoncarv.work-22c55e?style=flat-square)](https://coolify-env-demo.nelsoncarv.work)
 ![Next.js](https://img.shields.io/badge/Next.js-App%20Router-000000?style=flat-square&logo=next.js&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-multi--stage-2496ED?style=flat-square&logo=docker&logoColor=white)
@@ -75,6 +77,101 @@ flowchart LR
 There is no second configuration source to reconcile. GitHub declares it;
 Coolify runs it.
 
+## 🛡️ Security checks
+
+Every commit pushed to GitHub and every pull request update runs two independent
+security checks (`.github/workflows/sast.yml` and `.github/workflows/dast.yml`)
+before deployment. Both are required, run in parallel, and are independent of
+the `Build and deploy` pipeline — a security finding never ships an image.
+
+### SAST — static analysis
+
+- Runs CodeQL's `security-extended` query suite against the JavaScript and
+  TypeScript source with the [`github/codeql-action`](https://github.com/github/codeql-action).
+- Triggers on every `push`, every `pull_request`, and manually via
+  `workflow_dispatch`.
+- Findings are published under the repository's **Security → Code scanning
+  alerts** tab, not just in the workflow log.
+- Needs `security-events: write` permission to upload results; no other
+  permissions are granted.
+
+### DAST — dynamic analysis
+
+- Builds the current commit into a throwaway Docker image, starts it on an
+  isolated `dast-network` Docker network with placeholder environment values
+  (never real secrets), waits for `/api/health` to respond, then points an
+  [OWASP ZAP](https://www.zaproxy.org/) baseline scan
+  (`ghcr.io/zaproxy/zaproxy:stable`) at it.
+- The scan **only ever targets the temporary container**, never
+  `coolify-env-demo.nelsoncarv.work`. Nothing in this workflow can reach
+  production.
+- Pass/fail behaviour per finding is controlled by `.zap/rules.tsv`: each rule
+  ID is `FAIL` (blocks the workflow — currently missing/invalid framing,
+  content-type, cross-origin-isolation, permissions-policy, missing CSP, and
+  CSP-wildcard findings), `IGNORE` (recorded, non-blocking — mostly caching
+  and legacy header advisories that don't apply to this app), or `INFO`. Any
+  new exception added to that file must include a one-line reason as a
+  comment above it.
+- The HTML and JSON ZAP reports are uploaded as the `zap-baseline-report`
+  workflow artifact on every run, including failed ones, so a failure can be
+  triaged without re-running the scan.
+- The temporary container and network are always removed in a cleanup step,
+  even when the scan fails.
+
+The application also sends CSP, framing, MIME-sniffing, referrer,
+cross-origin-isolation, and browser permissions headers
+(see `next.config.ts`), which the DAST check validates on every run. If DAST
+starts failing after a change, check the response headers first — a real
+regression should be fixed there rather than added to `.zap/rules.tsv` as an
+`IGNORE`.
+
+### Running the ZAP baseline scan locally
+
+Reproduces exactly what `.github/workflows/dast.yml` runs in CI, so a finding
+can be triaged or a fix confirmed before pushing. Requires a running Docker
+engine.
+
+```bash
+# 1. Build the same image the workflow scans
+docker build --tag dast-target:local .
+
+# 2. Start it on an isolated network with placeholder (non-real) values
+docker network create dast-network
+docker run --detach --rm --name dast-target --network dast-network --network-alias app \
+  --env APP_MESSAGE="local DAST" \
+  --env APP_SECRET_HINT="local-placeholder" \
+  --env BUILD_TIME="local" \
+  dast-target:local
+
+# 3. Wait until the health endpoint responds
+docker exec dast-target curl --fail --silent http://localhost:3000/api/health
+
+# 4. Run the same ZAP baseline scan and ruleset as CI
+mkdir --parents zap-reports
+docker run --rm --network dast-network \
+  --volume "$PWD:/zap/src:ro" \
+  --volume "$PWD/zap-reports:/zap/wrk:rw" \
+  ghcr.io/zaproxy/zaproxy:stable \
+  zap-baseline.py \
+    --autooff \
+    -s \
+    -c /zap/src/.zap/rules.tsv \
+    -t http://app:3000 \
+    -m 1 \
+    -T 2 \
+    -r /zap/wrk/zap-report.html \
+    -J /zap/wrk/zap-report.json
+
+# 5. Clean up
+docker rm --force dast-target
+docker network rm dast-network
+```
+
+Open `zap-reports/zap-report.html` for the human-readable report. A non-zero
+exit code from `zap-baseline.py` means a rule marked `FAIL` in
+`.zap/rules.tsv` was triggered — fix the underlying response (usually a
+header in `next.config.ts`) rather than loosening the rule.
+
 ## 🧪 What is actually proven
 
 | Claim | Live evidence |
@@ -133,6 +230,9 @@ traceable to Git.
 - 🐳 `Dockerfile` — a multi-stage standalone build with a non-root runtime.
 - ⚙️ `.github/workflows/deploy.yml` — build, GHCR publish, environment sync,
   and Coolify redeploy in one pipeline.
+- 🛡️ `.github/workflows/sast.yml` and `.github/workflows/dast.yml` — CodeQL
+  static analysis and isolated OWASP ZAP dynamic scanning for each change.
+- 🧾 `.zap/rules.tsv` — the DAST failure policy and documented exceptions.
 - 🧰 `.env.example` — the complete local configuration contract, with no real
   credentials.
 
