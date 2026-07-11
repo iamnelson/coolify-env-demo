@@ -1,0 +1,74 @@
+name: DAST
+
+on:
+  push: {}
+  pull_request: {}
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  zap-baseline:
+    name: OWASP ZAP baseline scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Build the application image
+        run: docker build --tag dast-target:${{ github.sha }} .
+
+      - name: Start an isolated scan target
+        run: |
+          docker network create dast-network
+          docker run --detach --rm --name dast-target --network dast-network --network-alias app \
+            --env APP_MESSAGE="DAST scan" \
+            --env APP_SECRET_HINT="dast-placeholder" \
+            --env BUILD_TIME="${{ github.sha }}" \
+            dast-target:${{ github.sha }}
+
+      - name: Wait for the application to be ready
+        run: |
+          for attempt in {1..30}; do
+            if docker exec dast-target curl --fail --silent http://localhost:3000/api/health; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs dast-target
+          exit 1
+
+      - name: Run OWASP ZAP baseline scan
+        run: |
+          mkdir --parents zap-reports
+          chmod 777 zap-reports
+          docker run --rm --network dast-network \
+            --volume "$PWD:/zap/src:ro" \
+            --volume "$PWD/zap-reports:/zap/wrk:rw" \
+            ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py \
+              --autooff \
+              -s \
+              -c /zap/src/.zap/rules.tsv \
+              -t http://app:3000 \
+              -m 1 \
+              -T 2 \
+              -r /zap/wrk/zap-report.html \
+              -J /zap/wrk/zap-report.json
+
+      - name: Upload DAST report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-baseline-report
+          path: zap-reports/
+          if-no-files-found: warn
+
+      - name: Stop the scan target
+        if: always()
+        run: |
+          docker rm --force dast-target || true
+          docker network rm dast-network || true

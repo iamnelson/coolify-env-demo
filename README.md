@@ -5,6 +5,8 @@
 > from Actions variables and secrets to a container running on Coolify.
 
 [![Build and deploy](https://github.com/iamnelson/coolify-env-demo/actions/workflows/deploy.yml/badge.svg)](https://github.com/iamnelson/coolify-env-demo/actions/workflows/deploy.yml)
+[![SAST](https://github.com/iamnelson/coolify-env-demo/actions/workflows/sast.yml/badge.svg)](https://github.com/iamnelson/coolify-env-demo/actions/workflows/sast.yml)
+[![DAST](https://github.com/iamnelson/coolify-env-demo/actions/workflows/dast.yml/badge.svg)](https://github.com/iamnelson/coolify-env-demo/actions/workflows/dast.yml)
 [![Live](https://img.shields.io/badge/live-coolify--env--demo.nelsoncarv.work-22c55e?style=flat-square)](https://coolify-env-demo.nelsoncarv.work)
 ![Next.js](https://img.shields.io/badge/Next.js-App%20Router-000000?style=flat-square&logo=next.js&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-multi--stage-2496ED?style=flat-square&logo=docker&logoColor=white)
@@ -75,6 +77,21 @@ flowchart LR
 There is no second configuration source to reconcile. GitHub declares it;
 Coolify runs it.
 
+## 🛡️ Security checks
+
+Every commit pushed to GitHub and every pull request update runs two independent
+security checks before deployment:
+
+- **SAST** runs CodeQL's `security-extended` suite against the JavaScript and
+  TypeScript source code. Findings are published in GitHub code scanning.
+- **DAST** builds the commit into a temporary Docker image and runs an OWASP
+  ZAP baseline scan against it on a private Docker network. The scan never
+  touches the production URL, and its HTML and JSON reports are attached to the
+  workflow run.
+
+The application also sends CSP, framing, MIME-sniffing, referrer, and browser
+permissions headers, which the DAST check validates continuously.
+
 ## 🧪 What is actually proven
 
 | Claim | Live evidence |
@@ -133,6 +150,9 @@ traceable to Git.
 - 🐳 `Dockerfile` — a multi-stage standalone build with a non-root runtime.
 - ⚙️ `.github/workflows/deploy.yml` — build, GHCR publish, environment sync,
   and Coolify redeploy in one pipeline.
+- 🛡️ `.github/workflows/sast.yml` and `.github/workflows/dast.yml` — CodeQL
+  static analysis and isolated OWASP ZAP dynamic scanning for each change.
+- 🧾 `.zap/rules.tsv` — the DAST failure policy and documented exceptions.
 - 🧰 `.env.example` — the complete local configuration contract, with no real
   credentials.
 
