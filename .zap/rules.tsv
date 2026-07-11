@@ -9,7 +9,7 @@
 10021	FAIL	(X-Content-Type-Options Header Missing)
 10035	IGNORE	(Strict-Transport-Security Header Not Set)
 10036	IGNORE	(Server Leaks Information via "X-Powered-By" HTTP Response Header Field(s))
-10038	IGNORE	(Content Security Policy Header Not Set)
+10038	FAIL	(Content Security Policy Header Not Set)
 10049	IGNORE	(Storable and Cacheable Content)
 10055	FAIL	(CSP: Wildcard Directive)
 10063	FAIL	(Permissions Policy Header Not Set)
